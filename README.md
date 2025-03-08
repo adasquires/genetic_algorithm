@@ -1,4 +1,4 @@
-Add these to `"modules/"`:
+Add these files to the directory `"genetic_algorithm/"`:
 
 - `genetic_algorithm.h`
 - `genetic_algorithm.cpp`
