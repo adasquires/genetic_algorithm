@@ -10,4 +10,4 @@ You can run from command line or an IDE but I found that the easiest way to run 
 >
 > `./gen.exe`
 
-FYI: the Makefile I created has been optimized for running on macOS ARM64, and I had to work around the way the nlohmann::json library was set up originally to work with the architecture of my machine.  
+FYI: the Makefile I created has been optimized for running on macOS ARM64, and I had to work around the way the `nlohmann::json` library was set up originally to work with the architecture of my machine.  
