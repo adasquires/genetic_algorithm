@@ -1,4 +1,4 @@
-Add these to "modules/" and run!
+Add these to "modules/" and run:
 
 - genetic_algorithm.h
 - genetic_algorithm.cpp
