@@ -31,9 +31,12 @@ endif
 GCCFLAGS = -std=c++17 $(CFLAGS)
 MODULEFLAGS = -c -flto
 
-CXX = g++
-CXXFLAGS = -std=c++17 -arch arm64 -I/usr/local/homebrew/Cellar/nlohmann_json/1.1.0/include
-LDFLAGS = -arch arm64
+# this is how I got it to run on my ARM64 Mac :D
+CXX = /opt/miniconda3/envs/worm/bin/clang++
+CXXFLAGS = -arch arm64 -I/usr/local/include
+LDFLAGS = -arch arm64 -L/usr/local/lib -lnlopt -v
+LDFLAGS += -syslibroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+LDFLAGS += -lc++ -lSystem
 
 # building executables
 .PHONY: sim
