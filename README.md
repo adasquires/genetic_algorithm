@@ -1,3 +1,5 @@
+Evolutionary/genetic algorithm to optimize parameters of a neuromechanical model of _C. elegans_ chemotaxis.
+
 Add these files to the directory `"genetic_algorithm/"`:
 
 - `genetic_algorithm.h`
@@ -8,6 +10,6 @@ You can run from command line or an IDE but I found that the easiest way to run 
 
 > `make gen`
 >
-> `./gen.exe`
+> `./gen`
 
 FYI: the Makefile I created has been optimized for running on macOS ARM64, and I had to reconfigure the way the `nlohmann::json` library was set up originally to work with the architecture of my machine.  
