@@ -47,7 +47,7 @@ sim: sim.o Worm.o WormBody.o NervousSystem.o StretchReceptor.o Muscles.o random.
 .PHONY: gen
 gen: genetic_algorithm/genetic_algorithm.o Worm.o WormBody.o NervousSystem.o StretchReceptor.o Muscles.o random.o Collide.o
 	@echo "Compiling executable for genetic algorithm"
-	$(CXX) -arch arm64 $(GCCFLAGS) $(CXXFLAGS) $(LDFLAGS) -o gen.exe genetic_algorithm/genetic_algorithm.o Worm.o WormBody.o NervousSystem.o StretchReceptor.o Muscles.o random.o Collide.o
+	$(CXX) -arch arm64 $(GCCFLAGS) $(CXXFLAGS) $(LDFLAGS) -o gen genetic_algorithm/genetic_algorithm.o Worm.o WormBody.o NervousSystem.o StretchReceptor.o Muscles.o random.o Collide.o
 
 
 # TODO: read this https://stackoverflow.com/questions/1079832/how-can-i-configure-my-makefile-for-debug-and-release-builds
