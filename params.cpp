@@ -17,12 +17,20 @@ std::vector<std::string> param_names =
     "DB_tau", "DB_theta", "DD_tau", "DD_theta", "VBA_tau", "VBA_theta",
     "VBP_tau", "VBP_theta", "VDA_tau", "VDA_theta", "VDP_tau", "VDP_theta"};
 
+std::vector<std::string> change_params =
+    {"alpha", "beta", "foodPos_x", "foodPos_y", "gamma",
+     "AWA_AIY", "AIY_AIY", "AIY_RIA", "RIA_RMDD", "RIA_RMDV", "SMDD_RIA", "SMDV_RIA", "RIA_RIA",
+     "RIA_SMDD", "RIA_SMDV", "RMDD_RIA", "RMDV_RIA", "SMDD_SMDD", "SMDV_SMDV", "RMDD_RMDD", "RMDV_RMDV",
+     "SMDD_SMDV", "SMDV_SMDD", "SMDD_RMDV", "SMDV_RMDD", "RMDD_RMDV", "RMDV_RMDD", "SMDD_RMDD_ele", "SMDV_RMDV_ele", "RMDV_RMDD_ele",
+     "AIY_tau", "AIY_theta", "AWA_tau", "AWA_theta", "RIA_tau", "RIA_theta",
+     "RMDD_tau", "RMDD_theta", "RMDV_tau", "RMDV_theta", "SMDD_tau", "SMDD_theta", "SMDV_tau", "SMDV_theta"};
+
 // Parse parameters from input/params.json.
-std::map<std::string, double> parse_params(json p) {
+std::map<std::string, double> parse_params(json p, std::string input) {
 
     std::map<std::string, double> params;
 
-    std::ifstream f("input/params.json");
+    std::ifstream f(input);
 
     if (!f) {
         std::cerr << "params.json not found" << std::endl;
@@ -144,7 +152,7 @@ std::map<std::string, double> parse_params(json p) {
 }
 
 // Writes parameters to input/params.json.
-int write_params(std::map<std::string, double>& params, const std::string& out, int pos) {
+int write_params(std::map<std::string, double>& params, const std::string& out) {
 
     alpha = -(params.find("alpha") -> second);; beta = params.find("beta") -> second;;
     gamma = params.find("gamma") -> second;; kappa = params.find("kappa") -> second;;
@@ -207,15 +215,9 @@ int write_params(std::map<std::string, double>& params, const std::string& out, 
 
     data["ChemoReceptors"]["alpha"] = alpha;
     data["ChemoReceptors"]["beta"] = beta;
-    data["ChemoReceptors"]["gamma"] = gamma;
+    data["ChemoReceptors"]["gamma"] = p_gamma;
     data["ChemoReceptors"]["kappa"] = kappa;
     data["ChemoReceptors"]["lambda"] = lambda;
-
-    if (pos == 1) {
-        data["ChemoReceptors"]["foodPos"]["y"] = -0.003;
-    } else {
-      data["ChemoReceptors"]["foodPos"]["y"] = 0.003;
-    }
 
     data["Head"]["connections"][0]["weight"] = AWA_AIY;
     data["Head"]["connections"][1]["weight"] = AIY_AIY;
@@ -313,12 +315,13 @@ int write_params(std::map<std::string, double>& params, const std::string& out, 
     data["VentralCord"]["neurons"]["VDP"]["theta"] = VDP_theta;
 
     data["simulation"]["duration"] = duration;
+    data["simulation"]["angle"] = angle;
 
     std::ofstream g(out);
 
     if (g.is_open()) {
         g << data.dump(4);
-        std::cout << "JSON data has been written to input/params.json" << std::endl;
+        std::cout << "JSON data has been written to " << out << std::endl;
     } else {
         std::cerr << "Failed to open the file for writing." << std::endl;
     }
@@ -326,6 +329,7 @@ int write_params(std::map<std::string, double>& params, const std::string& out, 
     return 0;
 };
 
+// Write base params (for hybrid initialization). 
 int write_base_params() {
     alpha = 4.0; beta = 15.0;
     foodPos_x = 0.002; foodPos_y = 0.003;
@@ -500,198 +504,118 @@ int write_base_params() {
     return 0;
 }
 
+// Write random parameters.
 json write_random_params() {
-
-    int rand;
 
     std::srand(std::time(0));
 
-    alpha = get_rand(0.4, 40); beta = get_rand(5, 150);
-    foodPos_x = 0.002; foodPos_y = 0.003;
-    gamma = get_rand(0.2, 20); kappa = get_rand(20, 2000);
-    lambda = get_rand(-500000, -5000);
+ 		alpha = gen.get_rand(0.4, 40); beta = gen.get_rand(5, 150);
+    	foodPos_x = 0.002; foodPos_y = 0.003;
+    	p_gamma = gen.get_rand(0.2, 20);
 
-    AWA_AIY = get_rand(-120, -1.2); AIY_AIY = get_rand(0.02, 2);
-    AIY_RIA = get_rand(-450, -4.5);
-    rand = get_rand(-160, -1.6);
-    RIA_RMDD = rand; RIA_RMDV = rand;
-    rand = get_rand(0.2, 20);
-    SMDD_RIA = rand; SMDV_RIA = rand;
-    RIA_RIA = get_rand(-0.006, 0.06);
-    rand = get_rand(3, 300);
-    RIA_SMDD = rand; RIA_SMDV = rand;
-    rand = get_rand(0.07, 7);
-    RMDD_RIA = rand; RMDV_RIA = rand;
-    rand = get_rand(-140, -1.4);
-    SMDD_SMDD = rand; SMDV_SMDV = rand;
-    rand = get_rand(0.6, 60);
-    RMDD_RMDD = rand; RMDV_RMDV = rand;
-    rand = get_rand(-110, -1);
-    SMDD_SMDV = rand; SMDV_SMDD = rand;
-    rand = get_rand(1.4, 140);
-    SMDD_RMDV = rand; SMDV_RMDD = rand;
-    rand = get_rand(-110, -1);
-    RMDD_RMDV = rand; RMDV_RMDD = rand;
-    rand = get_rand(0.001, 0.1);
-    SMDD_RMDD_ele = std::abs(rand); SMDV_RMDV_ele = std::abs(rand);
-    RMDV_RMDD_ele = get_rand(0.1, 10);
+    	AWA_AIY = gen.get_rand(-120, -1.2); AIY_AIY = gen.get_rand(0.02, 2);
+    	AIY_RIA = gen.get_rand(-450, -4.5);
+   	 	double RIA_RMD_rand = gen.get_rand(-160, -1.6);
+    	RIA_RMDD = RIA_RMD_rand; RIA_RMDV = RIA_RMD_rand;
+    	double SMD_RIA_rand = gen.get_rand(0.2, 20);
+    	SMDD_RIA = SMD_RIA_rand; SMDV_RIA = SMD_RIA_rand;
+    	RIA_RIA = gen.get_rand(-0.006, -0.6);
+    	double RIA_SMD_rand = gen.get_rand(3, 300);
+    	RIA_SMDD = RIA_SMD_rand; RIA_SMDV = RIA_SMD_rand;
+    	double RMD_RIA_rand = gen.get_rand(0.07, 7);
+    	RMDD_RIA = RMD_RIA_rand; RMDV_RIA = RMD_RIA_rand;
+    	double a_SMD_SMD_rand = gen.get_rand(-28.0, -7.0);
+    	SMDD_SMDD = a_SMD_SMD_rand; SMDV_SMDV = a_SMD_SMD_rand;
+    	double RMD_RMD_rand = gen.get_rand(3, 12);
+    	RMDD_RMDD = RMD_RMD_rand; RMDV_RMDV = RMD_RMD_rand;
+    	double b_SMD_SMD_rand = gen.get_rand(-22, -5);
+    	SMDD_SMDV = b_SMD_SMD_rand; SMDV_SMDD = b_SMD_SMD_rand;
+    	double SMD_RMD_rand = gen.get_rand(7, 28);
+    	SMDD_RMDV = SMD_RMD_rand; SMDV_RMDD = SMD_RMD_rand;
+    	double b_RMD_RMD_rand = gen.get_rand(-22, -5);
+    	RMDD_RMDV = b_RMD_RMD_rand; RMDV_RMDD = b_RMD_RMD_rand;
+    	double SMD_RMD_ele_rand = gen.get_rand(0.005, 0.02);
+    	SMDD_RMDD_ele = std::abs(SMD_RMD_ele_rand); SMDV_RMDV_ele = std::abs(SMD_RMD_ele_rand);
+    	RMDV_RMDD_ele = gen.get_rand(0.7, 3);
 
-    AIY_tau = get_rand(0.01, 1); AIY_theta = get_rand(-1, 10);
-    AWA_tau = get_rand(0.01, 1); AWA_theta = get_rand(-1, 10);
-    RIA_tau = get_rand(0.01, 1); RIA_theta = get_rand(-1, 10);
-    RMDD_tau = get_rand(0.01, 1); RMDD_theta = get_rand(-1, 10);
-    RMDV_tau = get_rand(0.01, 1); RMDV_theta = get_rand(-1, 10);
-    SMDD_tau = get_rand(0.01, 1); SMDD_theta = get_rand(-1, 10);
-    SMDV_tau = get_rand(0.01, 1); SMDV_theta = get_rand(-1, 10);
+    	AIY_tau = gen.get_rand(0.01, 1); AIY_theta = gen.get_rand(-7, -0.07);
+    	AWA_tau = gen.get_rand(0.01, 1); AWA_theta = gen.get_rand(-30, -0.3);
+    	RIA_tau = gen.get_rand(0.01, 1); RIA_theta = gen.get_rand(-20, -0.2);
+    	double RMD_tau_rand = gen.get_rand(0.1, 1);
+    	RMDD_tau = RMD_tau_rand; RMDV_tau = RMD_tau_rand;
+    	double RMD_theta_rand = gen.get_rand(-6,-1.5);
+    	RMDD_theta = RMD_theta_rand; RMDV_theta = RMD_theta_rand;
+    	double SMD_tau_rand = gen.get_rand(0.1, 1);
+    	SMDD_tau = SMD_tau_rand; SMDV_tau = SMD_tau_rand;
+    	double SMD_theta_rand = gen.get_rand(3, 12);
+    	SMDV_theta = SMD_theta_rand; SMDV_theta = SMD_theta_rand;
 
-    NMJ_DB = get_rand(-0.0001, 1.0); NMJ_DD = get_rand(-0.0001, 1.0);
-    NMJ_RMDD = get_rand(-0.0001, 1.0); NMJ_RMDV = get_rand(-0.0001, 1.0);
-    NMJ_SMDD = get_rand(-0.0001, 1.0); NMJ_SMDV = get_rand(-0.0001, 1.0);
-    NMJ_VBA = get_rand(-0.0001, 1.0); get_rand(-0.0001, 1.0);
-    NMJ_VDA = get_rand(-0.0001, 1.0); NMJ_VDP = get_rand(-0.0001, 1.0);
-
-    sr_headgain = get_rand(-1000, -10); sr_vcgain = get_rand(-1000, -10);
-
-    rand = get_rand(-140, -1.4);
-    DB_DB = rand; VBA_VBA = rand; VBP_VBP = rand;
-    rand = get_rand(0.1, 10);
-    DD_DD = rand; VDA_VDA = rand; VDP_VDP = rand;
-    rand = get_rand(-90, -0.9);
-    DB_DD = rand; VBA_VDA = rand; VBP_VDP = rand;
-    rand = get_rand(1.2, 120);
-    DB_VDA = rand; DB_VDP = rand;
-    rand = get_rand(0.6, 60);
-    VBA_DD = rand; VBP_DD = rand;
-    DD_VDA = get_rand(0.1, 10);
-    rand = get_rand(0.1, 10);
-    DD_VDA_ele = std::abs(rand); DD_VDP_ele = std::abs(rand);
-    VDA_VDP_ele = get_rand(0.1, 10); VBA_VBP_ele = get_rand(0.1, 10);
-
-    rand = get_rand(0.05, 5);
-    fwd_DB_DB = rand; fwd_VBP_VBA = rand;
-    rand = get_rand(0.09, 9);
-    fwd_DD_DD = rand; fwd_VDP_VDA = rand;
-    fwd_VBP_DB = get_rand(0.1, 10);
-
-    DB_tau = get_rand(0.05, 5); DB_theta = get_rand(-10, 10);
-    DD_tau = get_rand(0.05, 5); DD_theta = get_rand(-10, 10);
-    VBA_tau = get_rand(0.05, 5); VBA_theta = get_rand(-10, 10);
-    VBP_tau = get_rand(0.05, 5); VBP_theta = get_rand(-10, 10);
-    VDA_tau = get_rand(0.05, 5); VDA_theta = get_rand(-10, 10);
-    VDP_tau = get_rand(0.05, 5); VDP_theta = get_rand(-10, 10);
-
-    std::ifstream f("input/params.json");
-    json data;
-    f >> data;
-
-    data["ChemoReceptors"]["alpha"] = alpha;
-    data["ChemoReceptors"]["beta"] = beta;
-    data["ChemoReceptors"]["foodPos"]["x"] = foodPos_x;
-    data["ChemoReceptors"]["gamma"] = gamma;
-    data["ChemoReceptors"]["kappa"] = kappa;
-    data["ChemoReceptors"]["lambda"] = lambda;
-
-    data["Head"]["connections"][0]["weight"] = AWA_AIY;
-    data["Head"]["connections"][1]["weight"] = AIY_AIY;
-    data["Head"]["connections"][2]["weight"] = AIY_RIA;
-    data["Head"]["connections"][3]["weight"] = RIA_RMDD;
-    data["Head"]["connections"][4]["weight"] = RIA_RMDV;
-    data["Head"]["connections"][5]["weight"] = SMDD_RIA;
-    data["Head"]["connections"][6]["weight"] = SMDV_RIA;
-    data["Head"]["connections"][7]["weight"] = RIA_RIA;
-    data["Head"]["connections"][8]["weight"] = RIA_SMDD;
-    data["Head"]["connections"][9]["weight"] = RIA_SMDV;
-    data["Head"]["connections"][10]["weight"] = RMDD_RIA;
-    data["Head"]["connections"][11]["weight"] = RMDV_RIA;
-    data["Head"]["connections"][12]["weight"] = SMDD_SMDD;
-    data["Head"]["connections"][13]["weight"] = SMDV_SMDV;
-    data["Head"]["connections"][14]["weight"] = RMDD_RMDD;
-    data["Head"]["connections"][15]["weight"] = RMDV_RMDV;
-    data["Head"]["connections"][16]["weight"] = SMDD_SMDV;
-    data["Head"]["connections"][17]["weight"] = SMDV_SMDD;
-    data["Head"]["connections"][18]["weight"] = SMDD_RMDV;
-    data["Head"]["connections"][19]["weight"] = SMDV_RMDD;
-    data["Head"]["connections"][20]["weight"] = RMDD_RMDV;
-    data["Head"]["connections"][21]["weight"] = RMDV_RMDD;
-    data["Head"]["connections"][22]["weight"] = SMDD_RMDD_ele;
-    data["Head"]["connections"][23]["weight"] = SMDV_RMDV_ele;
-    data["Head"]["connections"][24]["weight"] = RMDV_RMDD_ele;
-
-    data["Head"]["neurons"]["AIY"]["tau"] = AIY_tau;
-    data["Head"]["neurons"]["AIY"]["theta"] = AIY_theta;
-    data["Head"]["neurons"]["AWA"]["tau"] = AWA_tau;
-    data["Head"]["neurons"]["AWA"]["theta"] = AWA_theta;
-    data["Head"]["neurons"]["RIA"]["tau"] = RIA_tau;
-    data["Head"]["neurons"]["RIA"]["theta"] = RIA_theta;
-    data["Head"]["neurons"]["RMDD"]["tau"] = RMDD_tau;
-    data["Head"]["neurons"]["RMDD"]["theta"] = RMDD_theta;
-    data["Head"]["neurons"]["RMDV"]["tau"] = RMDV_tau;
-    data["Head"]["neurons"]["RMDV"]["theta"] = RMDV_theta;
-    data["Head"]["neurons"]["SMDD"]["tau"] = SMDD_tau;
-    data["Head"]["neurons"]["SMDD"]["theta"] = SMDD_theta;
-    data["Head"]["neurons"]["SMDV"]["tau"] = SMDV_tau;
-    data["Head"]["neurons"]["SMDV"]["theta"] = SMDV_theta;
-
-    data["NMJ"]["DB"] = NMJ_DB;
-    data["NMJ"]["DD"] = NMJ_DD;
-    data["NMJ"]["RMDD"] = NMJ_RMDD;
-    data["NMJ"]["RMDV"] = NMJ_RMDV;
-    data["NMJ"]["SMDD"] = NMJ_SMDD;
-    data["NMJ"]["SMDV"] = NMJ_SMDV;
-    data["NMJ"]["VBA"] = NMJ_VBA;
-    data["NMJ"]["VBP"] = NMJ_VBP;
-    data["NMJ"]["VDA"] = NMJ_VDA;
-    data["NMJ"]["VDP"] = NMJ_VDP;
-
-    data["StretchReceptors"]["Head_gain"] = sr_headgain;
-    data["StretchReceptors"]["VC_gain"] = sr_vcgain;
-
-    data["VentralCord"]["connections"][0]["weight"] = DB_DB;
-    data["VentralCord"]["connections"][1]["weight"] = VBA_VBA;
-    data["VentralCord"]["connections"][2]["weight"] = VBP_VBP;
-    data["VentralCord"]["connections"][3]["weight"] = DD_DD;
-    data["VentralCord"]["connections"][4]["weight"] = VDA_VDA;
-    data["VentralCord"]["connections"][5]["weight"] = VDP_VDP;
-    data["VentralCord"]["connections"][6]["weight"] = DB_DD;
-    data["VentralCord"]["connections"][7]["weight"] = VBA_VDA;
-    data["VentralCord"]["connections"][8]["weight"] = VBP_VDP;
-    data["VentralCord"]["connections"][9]["weight"] = DB_VDA;
-    data["VentralCord"]["connections"][10]["weight"] = DB_VDP;
-    data["VentralCord"]["connections"][11]["weight"] = VBA_DD;
-    data["VentralCord"]["connections"][12]["weight"] = VBP_DD;
-    data["VentralCord"]["connections"][13]["weight"] = DD_VDA;
-    data["VentralCord"]["connections"][15]["weight"] = DD_VDA_ele;
-    data["VentralCord"]["connections"][16]["weight"] = DD_VDP_ele;
-    data["VentralCord"]["connections"][17]["weight"] = VDA_VDP_ele;
-    data["VentralCord"]["connections"][18]["weight"] = VBA_VBP_ele;
-
-    data["VentralCord"]["connections_fwd"][0]["weight"] = fwd_DB_DB;
-    data["VentralCord"]["connections_fwd"][1]["weight"] = fwd_VBP_VBA;
-    data["VentralCord"]["connections_fwd"][2]["weight"] = fwd_DD_DD;
-    data["VentralCord"]["connections_fwd"][3]["weight"] = fwd_VDP_VDA;
-    data["VentralCord"]["connections_fwd"][4]["weight"] = fwd_VBP_DB;
-
-    data["VentralCord"]["neurons"]["DB"]["tau"] = DB_tau;
-    data["VentralCord"]["neurons"]["DB"]["theta"] = DB_theta;
-    data["VentralCord"]["neurons"]["DD"]["tau"] = DD_tau;
-    data["VentralCord"]["neurons"]["DD"]["theta"] = DD_theta;
-    data["VentralCord"]["neurons"]["VBA"]["tau"] = VBA_tau;
-    data["VentralCord"]["neurons"]["VBA"]["theta"] = VBA_theta;
-    data["VentralCord"]["neurons"]["VBP"]["tau"] = VBP_tau;
-    data["VentralCord"]["neurons"]["VDA"]["theta"] = VBP_theta;
-    data["VentralCord"]["neurons"]["VDA"]["tau"] = VDA_tau;
-    data["VentralCord"]["neurons"]["VDA"]["theta"] = VDA_theta;
-    data["VentralCord"]["neurons"]["VDP"]["tau"] = VDP_tau;
-    data["VentralCord"]["neurons"]["VDP"]["theta"] = VDP_theta;
-
-    std::ofstream random_params_file("input/params.json");
-
-    if (random_params_file.is_open()) {
-        random_params_file << data.dump(4);
-        std::cout << "JSON data has been written to input/params.json" << std::endl;
-    } else {
-        std::cerr << "Failed to open the file for writing." << std::endl;
+        std::ifstream f("input/params.json");
+        json data;
+        f >> data;
+    
+        data["ChemoReceptors"]["alpha"] = alpha;
+        data["ChemoReceptors"]["beta"] = beta;
+        data["ChemoReceptors"]["foodPos"]["x"] = foodPos_x;
+        data["ChemoReceptors"]["gamma"] = p_gamma;
+        data["ChemoReceptors"]["kappa"] = kappa;
+        data["ChemoReceptors"]["lambda"] = lambda;
+        data["ChemoReceptors"]["foodPos"]["x"] = foodPos_x;
+        data["ChemoReceptors"]["foodPos"]["y"] = foodPos_y;
+    
+        data["Head"]["connections"][0]["weight"] = AWA_AIY;
+        data["Head"]["connections"][1]["weight"] = AIY_AIY;
+        data["Head"]["connections"][2]["weight"] = AIY_RIA;
+        data["Head"]["connections"][3]["weight"] = RIA_RMDD;
+        data["Head"]["connections"][4]["weight"] = RIA_RMDV;
+        data["Head"]["connections"][5]["weight"] = SMDD_RIA;
+        data["Head"]["connections"][6]["weight"] = SMDV_RIA;
+        data["Head"]["connections"][7]["weight"] = RIA_RIA;
+        data["Head"]["connections"][8]["weight"] = RIA_SMDD;
+        data["Head"]["connections"][9]["weight"] = RIA_SMDV;
+        data["Head"]["connections"][10]["weight"] = RMDD_RIA;
+        data["Head"]["connections"][11]["weight"] = RMDV_RIA;
+        data["Head"]["connections"][12]["weight"] = SMDD_SMDD;
+        data["Head"]["connections"][13]["weight"] = SMDV_SMDV;
+        data["Head"]["connections"][14]["weight"] = RMDD_RMDD;
+        data["Head"]["connections"][15]["weight"] = RMDV_RMDV;
+        data["Head"]["connections"][16]["weight"] = SMDD_SMDV;
+        data["Head"]["connections"][17]["weight"] = SMDV_SMDD;
+        data["Head"]["connections"][18]["weight"] = SMDD_RMDV;
+        data["Head"]["connections"][19]["weight"] = SMDV_RMDD;
+        data["Head"]["connections"][20]["weight"] = RMDD_RMDV;
+        data["Head"]["connections"][21]["weight"] = RMDV_RMDD;
+        data["Head"]["connections"][22]["weight"] = SMDD_RMDD_ele;
+        data["Head"]["connections"][23]["weight"] = SMDV_RMDV_ele;
+        data["Head"]["connections"][24]["weight"] = RMDV_RMDD_ele;
+    
+        data["Head"]["neurons"]["AIY"]["tau"] = AIY_tau;
+        data["Head"]["neurons"]["AIY"]["theta"] = AIY_theta;
+        data["Head"]["neurons"]["AWA"]["tau"] = AWA_tau;
+        data["Head"]["neurons"]["AWA"]["theta"] = AWA_theta;
+        data["Head"]["neurons"]["RIA"]["tau"] = RIA_tau;
+        data["Head"]["neurons"]["RIA"]["theta"] = RIA_theta;
+        data["Head"]["neurons"]["RMDD"]["tau"] = RMDD_tau;
+        data["Head"]["neurons"]["RMDD"]["theta"] = RMDD_theta;
+        data["Head"]["neurons"]["RMDV"]["tau"] = RMDV_tau;
+        data["Head"]["neurons"]["RMDV"]["theta"] = RMDV_theta;
+        data["Head"]["neurons"]["SMDD"]["tau"] = SMDD_tau;
+        data["Head"]["neurons"]["SMDD"]["theta"] = SMDD_theta;
+        data["Head"]["neurons"]["SMDV"]["tau"] = SMDV_tau;
+        data["Head"]["neurons"]["SMDV"]["theta"] = SMDV_theta;
+    
+        std::ofstream random_params_file("input/params.json");
+        if (random_params_file.is_open())
+        {
+            random_params_file << data.dump(4);
+            std::cout << "JSON data has been written to input/params.json" << std::endl;
+        } else
+        {
+            std::cerr << "Failed to open the file for writing." << std::endl;
+        }
+        random_params_file.close();
+    
+        return data;
     }
-    random_params_file.close();
     return data;
-}
+};}
