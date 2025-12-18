@@ -4,9 +4,11 @@
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <math.h>
+#include "nlopt.hpp"
 #include <pthread.h>
 #include <random>
 #include <string>
@@ -33,56 +35,23 @@
 
 using nlohmann::json;
 
-WormBody b; RandomState rs;
-double angle = 1.437;
-double t_food_start = 1.0;
-
 double angle; double t_food_start = 1.0; double duration = 100.0;
 
-const int gen_count = 300; const int individuals = 60;
+const int gen_count = 100; const int individuals = 60;
 
-double mutation_rate = 0.005; double crossover_rate = 0.7; int tournament_size = individuals / 20; int elitism_size = individuals / 3;
+double mutation_rate = 0.005; double crossover_rate = 0.7; int tournament_size = individuals / 10; int elitism_size = individuals / 10;
 
-std::array<std::map<std::string, double>, individuals> crossed;
+double random_double;
 
-double alpha; double beta; double foodPos_x; double foodPos_y; double p_gamma; double kappa; double lambda;
-
-double AWA_AIY; double AIY_AIY; double AIY_RIA;
-double RIA_RMDD; double RIA_RMDV; double SMDD_RIA; double SMDV_RIA; double RIA_RIA;
-double RIA_SMDD; double RIA_SMDV; double RMDD_RIA; double RMDV_RIA;
-double SMDD_SMDD; double SMDV_SMDV; double RMDD_RMDD; double RMDV_RMDV;
-double SMDD_SMDV; double SMDV_SMDD; double SMDD_RMDV; double SMDV_RMDD;
-double RMDD_RMDV; double RMDV_RMDD; double SMDD_RMDD_ele; double SMDV_RMDV_ele ; double RMDV_RMDD_ele;
-
-double AIY_tau; double AIY_theta;
-double AWA_tau; double AWA_theta;
-double RIA_tau; double RIA_theta;
-double RMDD_tau; double RMDD_theta;
-double RMDV_tau; double RMDV_theta;
-double SMDD_tau; double SMDD_theta;
-double SMDV_tau; double SMDV_theta;
-
-double NMJ_DB; double NMJ_DD; double NMJ_RMDD; double NMJ_RMDV; double NMJ_SMDD; double NMJ_SMDV;
-double NMJ_VBA; double NMJ_VBP; double NMJ_VDA; double NMJ_VDP;
-
-double sr_headgain; double sr_vcgain;
-
-double DB_DB; double VBA_VBA; double VBP_VBP; double DD_DD; double VDA_VDA; double VDP_VDP; double DB_DD;
-double VBA_VDA; double VBP_VDP; double DB_VDA; double DB_VDP; double VBA_DD; double VBP_DD; double DD_VDA;
-double DD_VDA_ele; double DD_VDP_ele; double VDA_VDP_ele; double VBA_VBP_ele;
-
-double fwd_DB_DB; double fwd_VBP_VBA; double fwd_DD_DD; double fwd_VDP_VDA; double fwd_VBP_DB;
-
-double DB_tau; double DB_theta; double DD_tau; double DD_theta; double VBA_tau; double VBA_theta;
-double VBP_tau; double VBP_theta; double VDA_tau; double VDA_theta; double VDP_tau; double VDP_theta;
-
-double DB_tau; double DB_theta; double DD_tau; double DD_theta; double VBA_tau; double VBA_theta;
-double VBP_tau; double VBP_theta; double VDA_tau; double VDA_theta; double VDP_tau; double VDP_theta;
+std::array<json, individuals> gen_params;
+std::array<json, individuals/2> selected_params;
+std::array<json, individuals> crossed;
+std::array<json, individuals> mutated;
 
 class GeneticAlgorithm {
 
-    public:
-        GeneticAlgorithm() {};
+public:
+    GeneticAlgorithm() {};
 
     // Set random seed for simulation.
     long set_seed(json & simulation_params)
@@ -92,88 +61,98 @@ class GeneticAlgorithm {
     }
 
     // Run simulation, return fitness data.
-    std::tuple<double, double, double, double, double, std::vector<double> > EvaluationFunction(Worm w,
-                               			                                        RandomState &rs,
-                               			                                        double angle,
-                               			                                        std::vector<CollisionObject> & collObjs,
-                               			                                        double t_food_start,
-                               			                                        std::string output_file)
+    std::tuple<double, double> EvaluationFunction(Worm w,
+                                                  RandomState &rs,
+                                                  double angle,
+                                                  std::vector<CollisionObject> & collObjs,
+                                                  double t_food_start,
+                                                  std::string output_file,
+                                                  double foodpos_x,
+                                                  double foodpos_y)
     {
 
-    std::cout << std::setprecision(10);
+        ofstream fitfile;
+        fitfile.open("fitnes.yml");
 
-    std::ofstream output(output_file);
+        ofstream bodyfile;
+        bodyfile.open("body.dat");
 
-    std::string output_dir("data/run/NULL/");
+        ofstream actfile;
+        actfile.open("act.dat");
+        w.DumpActState_header(actfile);
 
-    std::ofstream fitfile;
-    fitfile.open(output_dir + "fitness.yaml");
-    std::ofstream bodyfile;
-    bodyfile.open(output_dir + "body.dat");
-    std::ofstream actfile;
-    actfile.open(output_dir + "act.dat");
-    std::ofstream curvfile;
-    curvfile.open(output_dir + "curv.dat");
+        ofstream curvfile;
+        curvfile.open("curv.dat");
 
-    TVector<double> curvature(1, N_curvs);
-    TVector<double> antpostcurv(1, 2);
-    antpostcurv.FillContents(0.0);
+        TVector<double> curvature(1, N_curvs);
+        TVector<double> antpostcurv(1, 2);
+        antpostcurv.FillContents(0.0);
 
-    w.InitializeState(rs, angle, collObjs);
+        std::cout << std::setprecision(10);
 
-    FitnessCalc fcalc(w);
+        w.InitializeState(rs, angle, collObjs);
 
-    std::vector<double> fitness_concentration;
-    double closest = 100.0;
-    double closest_time = 0.0;
+        FitnessCalc fcalc(w);
 
-    double xtp; double ytp; double xt; double yt;
+        std::vector<double> fitness_concentration;
+        double xtp; double ytp; double xt; double yt;
+        double distance = 0.0;
+        double t,fitness=0.0;
+        double fA = 0.0;
+        double accdist = 0.0;
+        double totaldist = 0.0;
+        double MaxDist = dist(VecXY(foodpos_x, foodpos_y), VecXY(0.0, 0.0));
+        std::cout << "Food placed at " << foodpos_x << ", " << foodpos_y << std::endl;
+        std::cout << "MaxDist: " << MaxDist << std::endl;
 
-    for (double t = 0.0; t <= DURATION; t += STEPSIZE)
-    {
-        if (t > t_food_start)
+        // Time loop
+        for (double t = 0.0; t <= DURATION; t += STEPSIZE)
         {
-            w.chemo_re.enabled = true;
+            if (t > t_food_start)
+            {
+                w.chemo_re.enabled = true;
+            }
+            // do the actual step
+            w.Step(STEPSIZE, 1);
+            // update fitness
+            fcalc.update();
+            w.Curvature(curvature);
+            double concentration = dist(VecXY(w.b.X(1), w.b.Y(1)), VecXY(foodpos_x, foodpos_y));
+            accdist += concentration;
+            fitness_concentration.push_back(concentration);
+            distance += dist_sqrd(VecXY(w.b.X(1), w.b.Y(1)), VecXY(xt, yt));
+            xt = w.b.X(1);
+            yt = w.b.Y(1);
         }
 
-        w.Step(STEPSIZE, 1);
+        std::cout << "accdist: " << accdist << std::endl;
+        totaldist = (accdist/(DURATION/STEPSIZE));
+        std::cout << "totaldist: " << totaldist << std::endl;
+        fA = (MaxDist - totaldist)/MaxDist;
+        //fA = totaldist / (MaxDist/AvgSpeed) / 2;
+        fA = fA < 0 ? 0.0 : fA;
+        fA = fA > 1 ? 0.0 : fA;
+        std::cout << "fA: " << fA << std::endl;
+        fitness += fA;
+        std::cout << "Chemotaxis index: " << (MaxDist - totaldist)/MaxDist << std::endl;
 
-        fcalc.update();
+        //std::cout << "fcalc distance travelled: " << dist << std::endl;
 
         w.Curvature(curvature);
-        curvfile << curvature << std::endl;
-
+        curvfile << curvature << endl;
         w.DumpBodyState(bodyfile, skip);
-
         w.DumpActState(actfile, skip);
 
-        xtp = xt; ytp = yt;
-        xt = w.CoMx(); yt = w.CoMy();
+        bodyfile.close();
 
-        double prox = std::sqrt((xt - foodPos_x) * (xt - foodPos_x) + (yt - foodPos_y) * (yt - foodPos_y));
-        if (prox < closest) {
-            closest = prox;
-            closest_time = t;
-        }
+        actfile.close();
 
-        double bodyorientation = w.Orientation();
-        double movementorientation = atan2(yt-ytp,xt-xtp);
-        double anglediff = movementorientation - bodyorientation;
-        double concentration = w.chemo_re.get_concentration(VecXY(w.b.X(1), w.b.Y(1)));
-        fitness_concentration.push_back(concentration);
+        curvfile.close();
 
-    }
+        fitfile << fcalc.strprintf();
 
-    bodyfile.close();
-    actfile.close();
-    curvfile.close();
-    fitfile << fcalc.strprintf();
 
-    double distance_travelled = fcalc.distancetravelled;
-
-    std::cout << "fcalc distance travelled: " << distance_travelled << std::endl;
-
-    return std::make_tuple(distance_travelled, w.CoMx(), w.CoMy(), closest, closest_time, fitness_concentration);
+        return std::make_tuple(distance, fitness);
 
     }
 
@@ -196,244 +175,148 @@ class GeneticAlgorithm {
     }
 
     // Return fitness.
-    std::tuple<double, double, double> fitness(double distance_travelled,
-                                               double head_x,
-                                               double head_y,
-                                               double closest,
-                                               double closest_time,
-                                               std::vector<double> fitness_concentration,
-                                               std::string input)
+    std::tuple<double, double> fitness(double distancetravelled,
+                                       double fitness_concentration)
     {
 
-        std::cout << "fit distance travelled: " << distance_travelled << std::endl;
-
-        std::ifstream f(input);
-
-        if (!f)
+        std::cout << "Distance travelled: " << distancetravelled << std::endl;
+        if (std::isnan(distancetravelled))
         {
-            std::cerr << "params.json not found" << std::endl;
-   	    }
-
-        json data;
-        f >> data;
-
-        // Proximity fitness.
-
-        foodPos_x = data["ChemoReceptors"]["foodPos"]["x"].get<double>();
-        foodPos_y = data["ChemoReceptors"]["foodPos"]["y"].get<double>();
-
-        double dx = head_x - foodPos_x;
-        double dy = head_y - foodPos_y;
-
-        double max_dist = std::sqrt(foodPos_x * foodPos_x + foodPos_y * foodPos_y);
-        //double max_dist = AvgSpeed * DURATION;
-        // << "max dist: " << max_dist << std::endl;
-        double dist_to_food = std::sqrt(dx*dx + dy*dy);
-        //std::cout << "dist to food: " << dist_to_food << std::endl;
-        double close = std::abs((closest / max_dist) * (closest_time / (DURATION * STEPSIZE)));
-        //std::cout << "close: " << close << std::endl;
-        double raw_proximity = 1.0 - dist_to_food / max_dist;
-        double proximity = raw_proximity * (1.0 - close);
-        proximity = std::max(0.0, std::min(1.0, proximity));
-        //std::cout << "Proximity: " << proximity << std::endl;
-
+            return std::make_tuple(0.0, 0.0);
+        }
         // Velocity fitness.
-
-        double v = distance_travelled / DURATION;
-        std::cout << "Distance travelled: " << distance_travelled << std::endl;
-        //double velocity = 1 - (std::abs(AvgSpeed - v) / AvgSpeed);
-        // velocity = std::max(0.0, std::min(1.0, velocity));
-        double diff = std::abs((v - AvgSpeed) / AvgSpeed + 1e-6);
-        double velocity = 1.0 / (1.0 + diff);
-        if (!std::isfinite(velocity)) velocity = 0.0;
+        double avgdist = AvgSpeed * DURATION;
+        double velocity = 1 - (std::abs(avgdist - distancetravelled) / avgdist);
+        velocity = std::max(0.0, std::min(1.0, velocity));
         std::cout << "Velocity: " << velocity << std::endl;
 
         // Chemosensation fitness.
+        //double h0 = fitness_concentration[0];
+        // compute integral of h(t)/h(0)
+        //double integral = 0.0;
+        //for (size_t i = 1; i < fitness_concentration.size(); ++i)
+        //{
+        //    double y1 = fitness_concentration[i-1] / h0;
+        //    double y2 = fitness_concentration[i]   / h0;
+        //    integral += (0.5 * (y2 + y1)) * STEPSIZE;   // trapezoidal area
+        //}
 
-        double chemosensation_fitness = 0;
-        size_t count = 0;
-        for (size_t i = 1; i < fitness_concentration.size(); ++i)
-        {
-            if (fitness_concentration[i] > fitness_concentration[i-1])
-            {
-                count += 1;
-            }
-        }
+        //double chemotaxis_index = 1.0 - integral / DURATION;
+        //chemotaxis_index = std::max(0.0, std::min(1.0, chemotaxis_index));
+        //std::cout << "Chemotaxis index: " << chemotaxis_index << std::endl;
 
-        double chemosensation_count = 0;
-        double chemosensation_value = 0;
-        for (int i = 0; i < fitness_concentration.size(); ++i) {
-            if (fitness_concentration[i] > chemosensation_value) {
-                chemosensation_value = fitness_concentration[i];
-                chemosensation_count = static_cast<double>(i);
-            }
-        }
-
-        chemosensation_count /= (duration / STEPSIZE);
-        chemosensation_value /= 244.00503969854154;
-
-        //std::cout << "Chemosensation value: " << chemosensation_value << std::endl;
-        //std::cout << "Chemosensation count: " << chemosensation_count << std::endl;
-
-        chemosensation_fitness = static_cast<double>(count) / (fitness_concentration.size() - 1);
-        chemosensation_fitness = std::max(0.0, std::min(1.0, chemosensation_fitness));
-
-        double chemosensation = 0.5 * chemosensation_count + 0.5 * chemosensation_value;
-        //std::cout << "Chemosensation fitness: " << chemosensation << std::endl;
-
-        double cumulative_concentration = std::accumulate(fitness_concentration.begin(), fitness_concentration.end(), 0.0);
-        double height = 244.00503969854154;
-        double width = (DURATION / STEPSIZE);
-        cumulative_concentration /= (0.5 * (height * 0.39 * width) + (height * 0.61 * width));
-        cumulative_concentration = std::max(0.0, std::min(1.0, cumulative_concentration));
-        std::cout << "Cumulative concentration fitness: " << cumulative_concentration << std::endl;
-
-        std::vector<double> chemosensation_derivative;
-        for (int i = 1; i < fitness_concentration.size(); ++i) {
-            chemosensation_derivative.push_back(fitness_concentration[i] - fitness_concentration[i-1]);
-        }
-
-        for (size_t i = 1; i < fitness_concentration.size(); ++i) {
-
-        }
-        double dt = (DURATION / STEPSIZE) / fitness_concentration.size();
-        double r0 = max_dist;
-        double integral = 0.0;
-
-        for (int i = 0; i <= fitness_concentration.size(); ++i) {
-            double t = i * dt;
-            double weight = (i == 0 || i == fitness_concentration.size()) ? 0.5 : 1.0;
-            integral += weight * (fitness_concentration[i] / r0);
-        }
-
-        integral *= dt;
-
-        double chemotaxis_index = 1.0 - (1.0 / (DURATION / STEPSIZE)) * integral;
-
-        //std::cout << "Chemotaxis: " << chemotaxis_index << std::endl;
-
-        double chemo_dist = exp(fitness_concentration.back() * fitness_concentration.back()) / (2.0 * (max_dist * max_dist));
-        //std::cout << "chemo dist: " << chemo_dist << std::endl;
-
-        double chemo_fit = fitness_concentration.back() / 244.00503969854154;
-
-        return std::make_tuple(velocity, proximity, cumulative_concentration);
+        return std::make_tuple(velocity, fitness_concentration);
 
     };
 
     // Return indices of fittest individuals.
     std::vector<int> get_fittest(std::vector<double> arr)
-	{
-    	// Ignore NaN values.
-    	std::vector<int> valid_indices;
-    	for (int i = 0; i < arr.size(); ++i)
-    	{
-        	if (!std::isnan(arr[i]))
-        	{
-            	valid_indices.push_back(i);
-        	}
-    	}
+    {
+        // Ignore NaN values.
+        std::vector<int> valid_indices;
+        for (int i = 0; i < arr.size(); ++i)
+        {
+            if (!std::isnan(arr[i]))
+            {
+                valid_indices.push_back(i);
+            }
+        }
 
-    	if (valid_indices.size() <= individuals)
-    	{
-        	std::sort(valid_indices.begin(),
-                  	valid_indices.end(),
-                  	[&](int i, int j)
-                    { return arr[i] > arr[j]; });
-        	return valid_indices;
-    	}
+        if (valid_indices.size() <= individuals)
+        {
+            std::sort(valid_indices.begin(),
+                      valid_indices.end(),
+                      [&](int i, int j)
+                      { return arr[i] > arr[j]; });
+            return valid_indices;
+        }
 
-    	// Partial sort to get the top individuals.
-    	std::partial_sort(valid_indices.begin(),
-                      	valid_indices.begin() + individuals,
-                      	valid_indices.end(),
-                      	[&](int i, int j)
-                        { return arr[i] > arr[j]; });
+        // Partial sort to get the top individuals.
+        std::partial_sort(valid_indices.begin(),
+                          valid_indices.begin() + individuals,
+                          valid_indices.end(),
+                          [&](int i, int j)
+                          { return arr[i] > arr[j]; });
 
-   		valid_indices.resize(individuals);
+        valid_indices.resize(individuals);
 
-    	return valid_indices;
-	}
+        return valid_indices;
+    }
 
     // Hamming distance (measure of generation diversity).
-    double hamming_distance(std::array<std::map<std::string, double>, individuals>& params)
+    double hamming_distance(std::array<json, individuals>& params)
     {
+        std::vector<json> GenomeI, GenomeJ;
+        //std::vector<int> change = {11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 108, 109, 110, 111, 112, 113};
+        std::vector<int> change = {0, 1, 4, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63, 67, 71, 75, 79, 83, 87, 91, 95, 99, 103};
         int distance = 0;
-        size_t num_params = params[0].size();
-
-        for (size_t i = 0; i < individuals; ++i)
+        int size = 0;
+        for (size_t i = 0; i < individuals; i++)
         {
-            for (size_t j = i + 1; j < individuals; ++j)
+            GenomeI.clear();
+            flatten(params[i], GenomeI);
+            for (size_t j = i + 1; j < individuals; j++)
             {
-                for (const auto& [key, value1] : params[i])
+                GenomeJ.clear();
+                flatten(params[j], GenomeJ);
+                for (int k = 0; k < change.size(); k++)
                 {
-                    double value2 = params[j].at(key);
-                    if (std::abs(value1 - value2) > 1e-6)
-                    {
-                        ++distance;
-                    }
+                    size++;
+                    if (std::abs(GenomeI[change[k]].get<double>() - GenomeJ[change[k]].get<double>()) > 1e-3) distance++;
                 }
             }
         }
 
-        size_t num_pairs = individuals * (individuals - 1) / 2;
-        size_t max_possible_differences = num_pairs * num_params;
-
-        double d = static_cast<double>(distance) / static_cast<double>(max_possible_differences);
+        double d = static_cast<double>(distance) / size;
         d = std::max(0.0, std::min(1.0, d));
 
         return d;
     }
 
 
-    std::map<std::string, double> elitism_select(std::array<std::map<std::string, double>, individuals>& params,
-                                                 std::vector<double>& fitness_values,
-                                                 int n)
+    json elitism_select(std::array<json, individuals>& params,
+                        std::vector<double>& fitness_values,
+                        int n)
     {
         std::vector<int> fitness = get_fittest(fitness_values);
         return params[fitness[n]];
     }
 
     // Fitness proportional selection.
-    std::map<std::string, double> fitness_proportional_select(
-            const std::array<std::map<std::string, double>, individuals>& gen_params,
-            const std::vector<double>& fitness)
+    json fitness_proportional_select(std::array<json, individuals>& params,
+                                     std::vector<double>& fitness_values)
     {
-        double epsilon = 1e-6; // avoid zero probabilities
-        double total_fitness = 0.0;
-        std::vector<double> adjusted_fitness(fitness.size());
 
-        for (size_t i = 0; i < fitness.size(); i++) {
-            adjusted_fitness[i] = fitness[i] + epsilon;
-            total_fitness += adjusted_fitness[i];
-        }
+        // Sort individuals by fitness.
+        std::array<json, individuals / 2> selected;
+        std::vector<int> fitness = get_fittest(fitness_values);
 
-        // Create cumulative distribution
-        std::vector<double> cumulative(fitness.size(), 0.0);
-        cumulative[0] = adjusted_fitness[0] / total_fitness;
-        for (size_t i = 1; i < fitness.size(); i++) {
-            cumulative[i] = cumulative[i-1] + adjusted_fitness[i] / total_fitness;
-        }
+        // Roulette wheel.
+        double fitness_sum = std::accumulate(fitness_values.begin(), fitness_values.end(), 0.0);
 
-        // Draw random number
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_real_distribution<double> dist(0.0, 1.0);
-        double r = dist(gen);
+        std::uniform_real_distribution<> dis(0.0, fitness_sum);
 
-        // Find selected index
-        size_t selected_index = 0;
-        for (; selected_index < cumulative.size(); selected_index++) {
-            if (r <= cumulative[selected_index]) break;
+        double rand_val = dis(gen);
+        double cum_sum = 0.0;
+
+        for (size_t i = 0; i < fitness_values.size(); ++i)
+        {
+            cum_sum += fitness_values[i];
+            if (rand_val <= cum_sum)
+            {
+                return params[i];
+            }
         }
+        return params[fitness[0]];
 
-        return gen_params[selected_index];
     }
 
     // Linear rank selection.
-    std::map<std::string, double> linear_rank_select(std::array<std::map<std::string, double>, individuals>& params,
-                                                     std::vector<double>& fitness_values,
-                                                     double n)
+    json linear_rank_select(std::array<json, individuals>& params,
+                            std::vector<double>& fitness_values,
+                            double n)
     {
 
         double n_plus = 2 - n;
@@ -441,7 +324,7 @@ class GeneticAlgorithm {
 
         // Rank individuals from worst to best based on fitness.
 
-        std::array<std::map<std::string, double>, individuals / 2> selected;
+        std::array<json, individuals / 2> selected;
         std::vector<int> fitness = get_fittest(fitness_values);
 
         std::vector<int> ranked = fitness;
@@ -450,10 +333,9 @@ class GeneticAlgorithm {
         // Get probability based on linear rank function.
 
         std::vector<double> probabilities;
-        probabilities.reserve(fitness.size());
         for (size_t i = 1; i < ranked.size() + 1; ++i)
         {
-            std::cout << i << std::endl;
+            //std::cout << i << std::endl;
             double probability = ((1.0/individuals) * (n_minus + (n_plus - n_minus) * ((i - 1.0) / (individuals - 1.0))));
             probabilities.push_back(probability);
         }
@@ -471,22 +353,22 @@ class GeneticAlgorithm {
         for (size_t i = 0; i < ranked.size(); ++i)
         {
             cumulative_sum += probabilities[i];
-            if (random_number <= cumulative_sum)
+            if (random_number < cumulative_sum)
             {
                 return params[ranked[i]];
-        	}
-		}
+            }
+        }
     }
 
     // Split rank selection.
-    std::array<std::map<std::string, double>, individuals / 2> split_rank_select(std::array<std::map<std::string, double>, individuals>& params,
-                                                                                 std::vector<double>& fitness_values,
-                                                                                 double select_lambda)
+    std::array<json, individuals / 2> split_rank_select(std::array<json, individuals>& params,
+                                                        std::vector<double>& fitness_values,
+                                                        double select_lambda)
     {
 
         // Rank indivdiuals from worst to best based on fitness. .
 
-        std::array<std::map<std::string, double>, individuals / 2> selected;
+        std::array<json, individuals / 2> selected;
         std::vector<int> fitness = get_fittest(fitness_values);
 
         std::vector<int> ranked = fitness;
@@ -499,12 +381,12 @@ class GeneticAlgorithm {
         {
             if (i <= individuals / 2)
             {
-            	double probability = (1 - select_lambda) * ( (8.0 * i) / (individuals * (individuals + 2.0)) );
-            	probabilities.push_back(probability);
+                double probability = (1 - select_lambda) * ( (8.0 * i) / (individuals * (individuals + 2.0)) );
+                probabilities.push_back(probability);
             } else
             {
-              	double probability = (1 - select_lambda) * ( (8.0 * i) / (3.0*individuals * (individuals + 2.0)) );
-            	probabilities.push_back(probability);
+                double probability = (1 - select_lambda) * ( (8.0 * i) / (3.0*individuals * (individuals + 2.0)) );
+                probabilities.push_back(probability);
             }
 
         }
@@ -522,29 +404,29 @@ class GeneticAlgorithm {
         while (j < individuals / 2)
         {
             double random_number = dis(gen);
-        	for (size_t i = 0; i < ranked.size(); ++i)
-        	{
+            for (size_t i = 0; i < ranked.size(); ++i)
+            {
                 cumulative_sum += probabilities[i];
-            	if (random_number < cumulative_sum)
-            	{
-                	selected[j] = params[ranked[i]];
-                	j++;
+                if (random_number < cumulative_sum)
+                {
+                    selected[j] = params[ranked[i]];
+                    j++;
                     break;
-            	}
-        	}
-		}
+                }
+            }
+        }
         return selected;
     }
 
     // Tournament selection.
-    std::array<std::map<std::string, double>, individuals / 2> tournament_select(std::array<std::map<std::string, double>, individuals>& params,
-                                                                                 std::vector<double>& scaled_fitness,
-                                                                                 int tournament_size,
-                                                                                 int elitism_size)
+    std::array<json, individuals / 2> tournament_select(std::array<json, individuals>& params,
+                                                        std::vector<double>& scaled_fitness,
+                                                        int tournament_size,
+                                                        int elitism_size)
     {
 
         // Get fitness values.
-        std::array<std::map<std::string, double>, individuals / 2> selected;
+        std::array<json, individuals / 2> selected;
         std::vector<int> fitness = get_fittest(scaled_fitness);
 
         // Elitism to always select the fittest individuals.
@@ -559,17 +441,17 @@ class GeneticAlgorithm {
 
         for (int i = elitism_size; i < (individuals / 2); ++i)
         {
-    	    int k = rand() % (individuals / 2);
+            int k = rand() % (individuals / 2);
 
-    	    for (int i = 0; i < tournament_size; ++i)
-    	    {
-        	    int j = rand() % (individuals / 2);
+            for (int i = 0; i < tournament_size; ++i)
+            {
+                int j = rand() % (individuals / 2);
                 auto it = std::find(used.begin(), used.end(), j);
-        	    if (fitness[j] > fitness[k] && it == used.end())
-        	    {
-            	    k = j;
-        	    }
-    	    }
+                if (fitness[j] > fitness[k] && it == used.end())
+                {
+                    k = j;
+                }
+            }
 
             selected[i] = params[fitness[k]];
             used.push_back(k);
@@ -579,115 +461,218 @@ class GeneticAlgorithm {
         return selected;
     }
 
-    // Adaptive crossover to generate offspring.
-    std::map<std::string, double> crossover(std::map<std::string, double> params_1,
-                                            std::map<std::string, double> params_2,
-                                                std::vector<std::string> param_names,
-                                                double crossover_rate)
-    {
+    void flatten(const json& j, std::vector<json>& out) {
+        if (j.is_primitive()) {
+            out.push_back(j);
+        }
+        else if (j.is_array()) {
+            for (const auto& v : j)
+                flatten(v, out);
+        }
+        else if (j.is_object()) {
+            for (const auto& [k, v] : j.items())
+                flatten(v, out);
+        }
+    }
 
-        std::map<std::string, double> child;
-
-        if ((rand() % 100) / 100.0 < crossover_rate)
-        {
-            int crossover_point = std::rand() % param_names.size();
-            for (int i = 0; i < crossover_point; ++i)
-            {
-                std::string p = param_names[i];
-                std::cout << p << std::endl;
-                child[p] = params_1.at(p);
-            }
-            for (int i = crossover_point; i < params_1.size(); ++i)
-            {
-                std::string p = param_names[i];
-                std::cout << p << std::endl;
-                child[p] = params_2.at(p);
-            }
-        } else
-        {
-            if ((std::rand() % 2) + 1 == 1)
-            {
-                for (int i = 0; i < param_names.size(); ++i)
-                {
-                    std::string p = param_names[i];
-                    std::cout << p << std::endl;
-                    child[p] = params_1.at(p);
-                }
-            } else
-            {
-                for (int i = 0; i < param_names.size(); ++i)
-                {
-                    std::string p = param_names[i];
-                    std::cout << p << std::endl;
-                    child[p] = params_2.at(p);
-                }
+    void unflatten(const json& structure, const std::vector<json>& genome, int& idx, json& out) {
+        if (structure.is_primitive()) {
+            out = genome[idx++];
+        }
+        else if (structure.is_array()) {
+            out = json::array();
+            for (const auto& v : structure) {
+                json child;
+                unflatten(v, genome, idx, child);
+                out.push_back(child);
             }
         }
+        else if (structure.is_object()) {
+            out = json::object();
+            for (const auto& [k, v] : structure.items()) {
+                json child;
+                unflatten(v, genome, idx, child);
+                out[k] = child;
+            }
+        }
+    }
+
+    // Adaptive crossover to generate offspring.
+    json crossover(const json& p1, const json& p2, double rate) {
+        // flatten parents
+        std::vector<json> g1, g2;
+        flatten(p1, g1);
+        flatten(p2, g2);
+
+        if (g1.size() != g2.size()) {
+            throw std::runtime_error("Parents have different genome lengths.");
+        }
+
+        int N = g1.size();
+        std::vector<json> child_genome(N);
+
+        // no crossover? random parent
+        if (((rand() % 100) / 100.0) >= rate) {
+            return (rand() % 2 == 0 ? p1 : p2);
+        }
+
+        // choose 1-point
+        int pt = rand() % N;
+
+        for (int i = 0; i < N; i++) {
+            child_genome[i] = (i < pt ? g1[i] : g2[i]);
+        }
+
+        // rebuild JSON from genome
+        json child;
+        int idx = 0;
+        unflatten(p1, child_genome, idx, child);
 
         return child;
+    }
 
-    };
 
     // Mutate individuals based on Gaussian distribution.
-    std::map<std::string, double> mutate(std::map<std::string, double>& params,
-                                        double mutation_rate,
-                                        double mutation_sigma,
-                                        std::vector<std::string> param_names,
-                                        std::vector<std::string> change_params,
-                                        std::string output_file)
+    json mutate(json& params,
+                double mutation_rate,
+                double mutation_sigma)
     {
-        std::map<std::string, double> mutated_geno;
-        mutated_geno = params;
         std::random_device rd;
         std::mt19937 gen(rd());
-        //std::normal_distribution<> dist(0.0, mutation_sigma);
+        std::normal_distribution<> dist(0.0, mutation_sigma);
         std::uniform_real_distribution<> prob_dist(0.0, 1.0);
+        //std::vector<int> change = {11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 108, 109, 110, 111, 112, 113};
+        std::vector<int> change = {0, 1, 4, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63, 67, 71, 75, 79, 83, 87, 91, 95, 99, 103};
 
-        //for (int i = 0; i < change_params.size(); ++i)
-        //{
-        //    if (get_rand(0.0, 1.0) < mutation_rate)
-       	//    {
-        //        std::string p = change_params[i];
-        //        if (params[p] > 0.0)
-        //        {
-        //            mutated_geno[p] += std::abs(dist(gen));
-        //        } else if (params[p] < 0.0)
-        //        {
-        //            mutated_geno[p] -= std::abs(dist(gen));
-        //        }
-        //    }
-        //}
+        std::vector<json> genome;
+        flatten(params, genome);
 
-        std::uniform_real_distribution<> dist(0.0, 1.0);
-        std::normal_distribution<> perturb(0.0, mutation_sigma);
-
-        for (auto& p: params) {
-            if (dist(gen) < mutation_rate) {
-                p.second += perturb(gen);
+        for (int i = 0; i < change.size(); i++)
+        {
+            if (get_rand(0.0, 1.0) < mutation_rate)
+            {
+                genome[change[i]] = genome[change[i]].get<double>() + std::abs(dist(gen));
             }
         }
 
-        // Ensure dorsal/ventral symmetry.
-   	    mutated_geno["RIA_RMDD"] = mutated_geno["RIA_RMDV"];
-        mutated_geno["SMDD_RIA"] = mutated_geno["SMDV_RIA"];
-        mutated_geno["RIA_SMDD"] = mutated_geno["RIA_SMDV"];
-        mutated_geno["RMDD_RIA"] = mutated_geno["RMDV_RIA"];
-        mutated_geno["SMDD_SMDD"] = mutated_geno["SMDV_SMDV"];
-        mutated_geno["RMDD_RMDD"] = mutated_geno["RMDV_RMDV"];
-        mutated_geno["SMDD_SMDV"] = mutated_geno["SMDV_SMDD"];
-        mutated_geno["SMDD_RMDV"] = mutated_geno["SMDV_RMDD"];
-        mutated_geno["RMDD_RMDV"] = mutated_geno["RMDV_RMDD"];
-        mutated_geno["SMDD_RMDD_ele"] = mutated_geno["SMDV_RMDV_ele"];
-        mutated_geno["RMDD_theta"] = mutated_geno["RMDV_theta"];
-        mutated_geno["SMDD_tau"] = mutated_geno["SMDV_tau"];
-        mutated_geno["SMDD_theta"] = mutated_geno["SMDV_theta"];
-        mutated_geno["SMDD_RMDD_ele"] = std::abs(mutated_geno["SMDD_RMDD_ele"]);
-   	    mutated_geno["SMDV_RMDV_ele"] = std::abs(mutated_geno["SMDV_RMDV_ele"]);
-        mutated_geno["RMDV_RMDD_ele"] = std::abs(mutated_geno["RMDV_RMDD_ele"]);
-        mutated_geno["foodPos_x"] = 0.002;
-        mutated_geno["foodPos_y"] = 0.003;
+        genome[27] = genome[23];
+        genome[35] = genome[31];
+        genome[47] = genome[43];
+        genome[55] = genome[51];
+        genome[63] = genome[59];
+        genome[71] = genome[67];
+        genome[79] = genome[75];
+        genome[87] = genome[83];
+        genome[95] = genome[91];
+        genome[103] = genome[99];
 
-        return mutated_geno;
+        json mutated_params;
+        int idx = 0;
+        unflatten(params, genome, idx, mutated_params);
+
+        return mutated_params;
+
+    }
+
+    json write_base_params()
+    {
+        std::ifstream params_file("input/params.json");
+
+        json params = json::parse(
+                std::string(
+                        (std::istreambuf_iterator<char>(params_file)),
+                        (std::istreambuf_iterator<char>())
+                ),
+                nullptr,
+                true,
+                true
+        );
+
+        return params;
+    }
+
+    json write_random_params()
+    {
+        //std::vector<int> change = {11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 108, 109, 110, 111, 112, 113};
+        std::vector<int> change = {0, 1, 4, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63, 67, 71, 75, 79, 83, 87, 91, 95, 99, 103};
+
+        json base_params = write_base_params();
+        std::vector<json> base_genome;
+        flatten(base_params, base_genome);
+
+        double alpha = 531242.7639479245;
+        base_genome[0] = get_rand(0.5 * alpha, 1.5 * alpha);
+
+        double beta = 1.8663559499166489;
+        base_genome[1] = get_rand(0.5 * beta, 1.5 * beta);
+
+        double gamma = 1.1947655088094953;
+        base_genome[4] = get_rand(0.5 * gamma, 1.5 * gamma);
+
+        double AWA_AIY = -17.613256896037917;
+        base_genome[11] = get_rand(1.5 * AWA_AIY, 0.5 * AWA_AIY);
+
+        double AIY_AIY = 9.986898926639817;
+        base_genome[15] = get_rand(0.5 * AIY_AIY, 1.5 * AIY_AIY);
+
+        double AIY_RIA = -7.0634496816364285;
+        base_genome[19] = get_rand(1.5 * AIY_RIA, 0.5 * AIY_RIA);
+
+        double RIA_RMD = -15.734477641464135;
+        base_genome[23] = get_rand(1.5 * RIA_RMD, 0.5 * RIA_RMD);
+        base_genome[27] = base_genome[23];
+
+        double SMD_RIA = 0.7060810365603275;
+        base_genome[31] = get_rand(0.5 * SMD_RIA, 1.5 * SMD_RIA);
+        base_genome[35] = base_genome[31];
+
+        double RIA_RIA = -0.35546625206879734;
+        base_genome[39] = get_rand(1.5 * RIA_RIA, 0.5 * RIA_RIA);
+
+        double RIA_SMD = 15.15488076456896;
+        base_genome[43] = get_rand(0.5 * RIA_SMD, 1.5 * RIA_SMD);
+        base_genome[47] = base_genome[43];
+
+        double RMD_RIA = 5.927444644786412;
+        base_genome[51] = get_rand(0.5 * RMD_RIA, 1.5 * RMD_RIA);
+        base_genome[55] = base_genome[51];
+
+        double SMD_SMD = -14.9121;
+        base_genome[59] = get_rand(1.5 * SMD_SMD, 0.5 * SMD_SMD);
+        base_genome[63] = base_genome[59];
+
+        double RMD_RMD = 6.62512;
+        base_genome[67] = get_rand(0.5 * RMD_RMD, 1.5 * RMD_RMD);
+        base_genome[71] = base_genome[67];
+
+        double SMD_SMDx = -11.2755;
+        base_genome[75] = get_rand(1.5 * SMD_SMDx, 0.5 * SMD_SMDx);
+        base_genome[79] = base_genome[75];
+
+        double SMD_RMD = 14.9933;
+        base_genome[83] = get_rand(0.5 * SMD_RMD, 1.5 * SMD_RMD);
+        base_genome[87] = base_genome[83];
+
+        double RMD_RMDx = -11.6075;
+        base_genome[91] = get_rand(1.5 * RMD_RMDx, 0.5 * RMD_RMDx);
+        base_genome[95] = base_genome[91];
+
+        double SMDx_RMDx = 0.0199558;
+        base_genome[99] = get_rand(0.5 * SMDx_RMDx, 1.5 * SMDx_RMDx);
+        base_genome[103] = base_genome[99];
+
+        //base_genome[108] = get_rand(0.0034, 1);
+        //base_genome[109] = get_rand(-4, 5);
+        //base_genome[110] = get_rand(0.004, 1);
+        //base_genome[111] = get_rand(-10, -1);
+        //base_genome[112] = get_rand(0.005, 1);
+        //base_genome[113] = get_rand(-3, -8);
+
+        int idx = 0;
+        json random_params;
+        unflatten(base_params, base_genome, idx, random_params);
+
+        return random_params;
 
     }
 

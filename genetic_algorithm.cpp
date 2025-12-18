@@ -1,59 +1,55 @@
 #include "genetic_algorithm.h"
-#include "params.cpp"
 
 int main()
 {
-
     GeneticAlgorithm genetic_algorithm;
 
     std::setprecision(10);
 
-    std::array<std::map<std::string, double>, individuals> gen_params;
+    double fit;
+    double velocity_weight = 0.0; double chemosensation_weight = 1.0;
+    std::array<json, individuals> gen_params;
     std::vector<double> fitness_avg(individuals, 0);
     std::vector<double> proximity_fitness(individuals, 0);
     std::vector<double> velocity_fitness(individuals, 0);
     std::vector<double> chemosensation_fitness(individuals, 0);
+    std::array<json, individuals / 2> final_params;
+    json params;
+    //std::vector<double> foodpos_x = {-0.01, -0.01 * (std::sqrt(2) / 2), 0.0, 0.01 * (std::sqrt(2) / 2), 0.01};
+    //std::vector<double> foodpos_y = {0.0, 0.01 * (std::sqrt(2) / 2), 0.01, 0.01 * (std::sqrt(2) / 2), 0.0};
+    std::vector<double> foodpos_x = {-0.0042426, -0.0042426 * (std::sqrt(2) / 2), 0.0, 0.0042426 * (std::sqrt(2) / 2), 0.0042426};
+    std::vector<double> foodpos_y = {0.0, 0.0042426 * (std::sqrt(2) / 2), 0.0042426, 0.0042426 * (std::sqrt(2) / 2), 0.0};
 
     std::string output_file = "log/0.txt";
     std::ofstream output(output_file, std::ios::app);
 
-    // Run first generation. 
-    for (int i = 0; index < individuals; index++)
+    std::string fit_file = "log/fitness.txt";
+    std::ofstream fit_f(fit_file, std::ios::app);
+
+    std::string diversity_file = "log/diversity.txt";
+    std::ofstream diversity_f(diversity_file, std::ios::app);
+
+    // Run first generation.
+
+    for (int i = 0; i < individuals; i++)
     {
+
         // Hybrid initialization.
         if (i == 0)
         {
-            write_base_params();
+            params = genetic_algorithm.write_random_params();
         } else
         {
             // Randomize parameters for individuals.
-            write_random_params();
+            params = genetic_algorithm.write_random_params();
         }
 
-        // Run two simulations per individual at two different initial angles. 
-        for (int j = 0; j < 2; j++)
+        // Run two simulations per individual at two different initial angles.
+        for (int j = 0; j < 5; j++)
         {
-            std::ifstream params_file("input/params.json");
-
-            json params = json::parse(
-                std::string(
-                    (std::istreambuf_iterator<char>(params_file)),
-                    (std::istreambuf_iterator<char>())
-                    ),
-                    nullptr,
-                    true,
-                    true
-                );
-
-            if (j == 0)
-            {
-                angle = 30.0;
-                params["simulation"]["angle"] = 30.0;
-            } else
-            {
-                angle = 30.0;
-                params["simulation"]["angle"] = -30.0;
-            }
+            params["ChemoReceptors"]["foodPos"]["x"] = foodpos_x[j];
+            params["ChemoReceptors"]["foodPos"]["y"] = foodpos_y[j];
+            params["ChemoReceptors"]["kappa"] = genetic_algorithm.get_rand(-1.0, -0.1);
 
             // Set random seed.
             json simulation_params = params["simulation"];
@@ -68,98 +64,88 @@ int main()
             InitializeBodyConstants();
             Worm w(params);
 
-            // Store generation parameters.
-            gen_params[i] = parse_params(params, "input/params.json");
-
-            if (i == 0)
-            {
-                double angle = params["simulation"]["angle"].get<double>()
-            }
-            else
-            {
-                double angle = -(params["simulation"]["angle"].get<double>())
-            }
-
             // Run simulation.
-            double distancetravelled, head_x, head_y, close, closest_time;
-            std::vector<double>fitness_concentration;
+            double distancetravelled;
+            double fitness_concentration;
             std::tie(distancetravelled,
-                     head_x,
-                     head_y,
-                     close,
-                     closest_time,
                      fitness_concentration) = genetic_algorithm.EvaluationFunction(w,
                                                                                    rs,
-                                                                                   angle,
+                                                                                   params["simulation"]["angle"],
                                                                                    collObjs,
                                                                                    params["simulation"]["t_food_start"].get<double>(),
-                                                                                   output_file);
+                                                                                   output_file,
+                                                                                   foodpos_x[j],
+                                                                                   foodpos_y[j]);
 
             // Get fitness.
-            double velocity, proximity, chemosensation;
+            double velocity, chemosensation;
             std::tie(velocity,
-                     proximity,
                      chemosensation) = genetic_algorithm.fitness(distancetravelled,
-                                                                 head_x,
-                                                                 head_y,
-                                                                 close,
-                                                                 closest_time,
-                                                                 fitness_concentration,
-                                                                 "input/params.json");
-
-            double fit1 = 0.5 * velocity + 0.5 * chemosensation;
-
-            chemosensation_fitness[i] += 0.5*chemosensation;
-            proximity_fitness[i] += 0.5*proximity;
-            velocity_fitness[i] += 0.5*velocity;
+                                                                 fitness_concentration);
 
             // Combine fitnesses for both simulations.
-            fitness_avg[i] += 0.5*velocity + 0.5*chemosensation;
+            fitness_avg[i] += 0.2 * (velocity_weight * velocity + chemosensation_weight * chemosensation);
+            std::cout << "Worm " << i << "/" << individuals << "." << j << ": " << "Fitness = " << fitness_avg[i]
+                      << " = " << velocity_weight << " * " << velocity
+                      << " + " << chemosensation_weight << " * " << chemosensation << std::endl;
+            gen_params[i] = params;
         }
     }
 
     // Select fittest individuals.
-    std::array<std::map<std::string, double>, individuals / 2> selected_params;
+    std::array<json, individuals / 2> selected_params;
+    for (int i = 0; i < individuals / 2; i++)
+    {
+        json parent;
+        // Elitism to always select closest proximity.
+        if (i < elitism_size)
+        {
+            std::vector<int> fit_vector = genetic_algorithm.get_fittest(chemosensation_fitness);
+            std::cout << "Elitism " << i << "..." << std::endl;
+            parent = genetic_algorithm.elitism_select(gen_params, chemosensation_fitness, i);
+        } else
+        {
+            std::cout << "Fitness proportional selection " << i << "..." << std::endl;
+            parent = genetic_algorithm.fitness_proportional_select(gen_params,
+                                                                   fitness_avg);
+        }
+        selected_params[i] = parent;
+    }
 
-    // Tournament selection. 
-    selected_params = genetic_algorithm.tournament_select(gen_params, velocity_fitness, tournament_size, elitism_size);
+    final_params = selected_params;
 
     // Crossover.
+    std::cout << "Crossover..." << std::endl;
     for (int i = 0; i < individuals; i++)
     {
         std::random_device rd;
-        std::mt19937 gen_rand(rd());
+        std::mt19937 gen(rd());
         std::uniform_int_distribution<int> distrib(0, (individuals/2)-1);
-        std::uniform_real_distribution<double> real_dist(0.0, 1.0);
-        std::uniform_int_distribution<int> cp_dist(0, param_names.size() - 1);
 
-        int rand_1 = distrib(gen_rand);
-        int rand_2 = distrib(gen_rand);
+        int rand_1 = distrib(gen);
+        int rand_2 = distrib(gen);
 
-        const std::map<std::string, double>& params_1 = selected_params[rand_1];
-        const std::map<std::string, double>& params_2 = selected_params[rand_2];
+        json params_1 = selected_params[rand_1];
+        json params_2 = selected_params[rand_2];
         crossed[i] = genetic_algorithm.crossover(params_1,
-                                                params_2,
-                                                 param_names,
+                                                 params_2,
                                                  crossover_rate);
     }
 
     // Mutation.
-    std::array<std::map<std::string, double>, individuals> mutated;
+    std::cout << "Mutation..." << std::endl;
     for (int i = 0; i < individuals; i++)
     {
         mutated[i] = genetic_algorithm.mutate(crossed[i],
                                               mutation_rate,
-                                              0.01,
-                                              param_names,
-											  change_params,
-                                              output_file);
+                                              0.01);
     }
 
     // Get diversity measure.
     double distance = genetic_algorithm.hamming_distance(gen_params);
-    std::cout << "Hamming distance:" << distance << std::endl;
+    std::cout << "Hamming distance: " << distance << std::endl;
     output << "\nHamming distance: " << std::fixed << std::setprecision(10) << distance << std::endl;
+    diversity_f << distance << std::endl;
 
     std::vector<double> fitness_to_print;
     double fitness_print = 0.0;
@@ -173,10 +159,12 @@ int main()
     {
         fitness_print += fitness_to_print[i];
     }
-    fitness_print /= (individuals/2.0);
+    fitness_print /= (individuals/2);
 
-    std::cout << "Fitness: " << fitness_print << std::endl;
+    std::cout << "Generation 0 fitness: " << fitness_print << std::endl;
     output << "\nFitness: " << fitness_print << std::endl;
+
+    fit_f << fitness_print << std::endl;
 
     output << "\n========================" << std::endl;
     output << "--generation parameters" << std::endl;
@@ -184,9 +172,9 @@ int main()
 
     for (int i = 0; i < individuals; i++)
     {
-        for (const pair<const std::string, double>& value : gen_params[i])
+        for (const auto& item : gen_params[i].items())
         {
-            output << std::fixed << std::setprecision(10) << value.first << ": " << value.second << std::endl;
+            output << std::fixed << std::setprecision(10) << item.key() << ": " << item.value() << std::endl;
         }
     }
 
@@ -205,9 +193,9 @@ int main()
 
     for (int i = 0; i < individuals/2; i++)
     {
-        for (const auto& pair : selected_params[i])
+        for (const auto& item : selected_params[i].items())
         {
-           output << std::fixed << std::setprecision(10) << pair.first << " " << pair.second << std::endl;
+            output << std::fixed << std::setprecision(10) << item.key() << " " << item.value() << std::endl;
         }
     }
 
@@ -217,9 +205,9 @@ int main()
 
     for (int i = 0; i < individuals; i++)
     {
-       for (const auto& pair : crossed[i])
+        for (const auto& item : crossed[i].items())
         {
-            output << std::fixed << std::setprecision(10) << pair.first << " " << pair.second << std::endl;
+            output << std::fixed << std::setprecision(10) << item.key() << " " << item.value() << std::endl;
         }
     }
 
@@ -229,214 +217,174 @@ int main()
 
     for (int i = 0; i < individuals; i++)
     {
-        for (const auto& pair : mutated[i])
+        for (const auto& item : mutated[i].items())
         {
-            output << std::fixed << std::setprecision(10) << pair.first << " " << pair.second << std::endl;
+            output << std::fixed << std::setprecision(10) << item.key() << " " << item.value() << std::endl;
         }
     }
 
     double fittest = std::accumulate(fitness_avg.begin(),
                                      fitness_avg.end(), 0.0)
-                                     / fitness_avg.size();
+                     / fitness_avg.size();
 
-    std::array<std::map<std::string, double>, individuals / 2> final_params;
-    std::array<std::map<std::string, double>, individuals> gen_params_next = gen_params;
 
-    // Continue algorithm for remaining generations. 
-    for (int generation = 1; generation < gen_count; generation++)
+    // Continue algorithm for remaining generations.
+    for (int gen = 1; gen < gen_count; gen++)
     {
-        std::array<std::map<std::string, double>, individuals / 2> selected_params_next;
+        std::array<json, individuals> gen_params;
+        std::array<json, individuals / 2> selected_params_next;
         std::vector<double> fitness_avg_next(individuals, 0);
         std::vector<double> velocity_fitness_next(individuals, 0);
         std::vector<double> proximity_fitness_next(individuals, 0);
         std::vector<double> chemosensation_fitness_next(individuals, 0);
         std::vector<int> random_index;
 
-        std::string output_file_next = "log/" + std::to_string(generation) + ".txt";
-        std::ofstream output_next(output_file_next,std::ios::app);
+        std::string output_file = "log/" + std::to_string(gen) + ".txt";
+        std::ofstream output(output_file,std::ios::app);
 
-        // Run simulation for each individual. 
-        for (int index = 0; index < individuals; index++)
+        std::cout << "Generation " << gen << "/" << gen_count << "..." << std::endl;
+
+        // Run simulation for each individual.
+        for (int i = 0; i < individuals; i++)
         {
-            // Run two simulations per individual with two different starting angles. 
-            for (int j = 0; j < 2; j++)
+
+            // Run two simulations per individual with two different starting angles.
+            for (int j = 0; j < 5; j++)
             {
+
                 if (std::find(random_index.begin(), random_index.end(), i) != random_index.end())
                 {
-                    std::cout << "Randomizing..." << std::endl;
-                    write_random_params();
+                    std::cout << "Randomizing " << i << "..." << std::endl;
+                    params = genetic_algorithm.write_random_params();
                 } else
                 {
-                // Get parameters from previous generation.
-                    write_params(mutated[i],
-                                 "input/params.json");
+                    // Get parameters from previous generation.
+                    params = mutated[i];
                 }
-                
-                std::ifstream params_file("input/params.json");
-                
-                json params = json::parse(
-                std::string(
-                (std::istreambuf_iterator<char>(params_file)),
-                (std::istreambuf_iterator<char>())
-                ),
-                nullptr,
-                true,
-                true
-                );
 
-                 if (j == 0)
-                {
-                    angle = 30.0;
-                    params["simulation"]["angle"] = 30.0;
-                } else
-                {
-                    angle = 30.0;
-                    params["simulation"]["angle"] = -30.0;
-                }
+                params["ChemoReceptors"]["foodPos"]["x"] = foodpos_x[j];
+                params["ChemoReceptors"]["foodPos"]["y"] = foodpos_y[j];
+                params["ChemoReceptors"]["kappa"] = genetic_algorithm.get_rand(-1.0, -0.1);
 
                 json simulation_params = params["simulation"];
 
-                // Set random seed. 
-                long seed = set_seed(simulation_params);
+                // Set random seed.
+                long seed = genetic_algorithm.set_seed(simulation_params);
                 RandomState rs;
                 rs.SetRandomSeed(seed);
 
-                // Initialize worm. 
+                // Initialize worm.
                 std::vector<CollisionObject> collObjs = load_objects(params["simulation"]["coll"]);
                 InitializeBodyConstants();
                 Worm w(params);
 
-                // Store generation parameters. 
-                gen_params_next[i] = parse_params(params, "input/params.json");
+                // Store generation parameters.
+                gen_params[i] = params;
 
                 // Run simulation.
-                double distancetravelled, head_x, head_y, close, closest_time;
-            	std::vector<double>fitness_concentration;
-            	std::tie(distancetravelled,
-                         head_x,
-                         head_y,
-                         close,
-                         closest_time,
+                double distancetravelled;
+                double fitness_concentration;
+                std::tie(distancetravelled,
                          fitness_concentration) =  genetic_algorithm.EvaluationFunction(w,
                                                                                         rs,
-                                                                                        angle,
+                                                                                        params["simulation"]["angle"],
                                                                                         collObjs,
                                                                                         params["simulation"]["t_food_start"].get<double>(),
-                                                                                        output_file_next);
+                                                                                        output_file,
+                                                                                        foodpos_x[j],
+                                                                                        foodpos_y[j]);
 
                 // Get fitness.
                 double velocity, proximity, chemosensation;
-            	std::tie(velocity,
-                         proximity,
+                std::tie(velocity,
                          chemosensation) = genetic_algorithm.fitness(distancetravelled,
-                                                                     head_x,
-                                                   	                 head_y,
-                                                   	                 close,
-                                                   	                 closest_time,
-                                                                     fitness_concentration,
-                                                                     "input/params.json");
+                                                                     fitness_concentration);
 
                 // Combine fitnesses for both simulations per individual.
-                double fit = 0.5 * velocity + 0.4 * proximity + 0.1 * chemosensation;
-                proximity_fitness_next[i] += 0.5*proximity;
-                velocity_fitness_next[i] += velocity;
-                chemosensation_fitness_next[i] += chemosensation;
+                fitness_avg_next[i] += 0.2 * (velocity_weight * velocity + chemosensation_weight * chemosensation);
+                std::cout << "\r" << "Worm " << i << "/" << individuals << "." << j << ": " << "Fitness = " << fitness_avg_next[i]
+                          << " = " << velocity_weight << " * " << velocity
+                          << " + " << chemosensation_weight << " * " << chemosensation << std::endl;
             }
+
         }
 
-        double average_velocity = 0;
-        for (int i = 0; i < velocity_fitness_next.size() / 2; i++) {
-            average_velocity += velocity_fitness_next[i];
-        }
-        average_velocity /= (velocity_fitness_next.size() / 2.0);
-
-        double average_chemosensation = 0;
-        for (int i = 0; i < chemosensation_fitness_next.size() / 2; i++) {
-            average_chemosensation += chemosensation_fitness_next[i];
-        }
-        average_chemosensation /= (chemosensation_fitness_next.size() / 2.0);
-
-        if (average_velocity >= 0.4) {
-            std::cout << "Sufficient velocity fitness reached" << std::endl;
-            for (int i = 0; i < individuals; i++) {
-                fitness_avg_next[i] = 0.5*velocity_fitness_next[i] + 0.5*chemosensation_fitness_next[i];
-            }
-        } else {
-            std::cout << "Insufficient velocity fitness" << std::endl;
-            for (int i = 0; i < individuals; i++) {
-                fitness_avg_next[i] = 0.5*velocity_fitness_next[i] + 0.5*chemosensation_fitness_next[i];
-            }
-        }
-
-        double distance_next = genetic_algorithm.hamming_distance(gen_params_next);
+        double distance_next = genetic_algorithm.hamming_distance(gen_params);
         std::cout << "Hamming distance:" << distance_next << std::endl;
+        diversity_f << distance_next << std::endl;
 
         double this_fitness = std::accumulate(fitness_avg_next.begin(),
                                               fitness_avg_next.end(), 0.0)
-                                              / fitness_avg_next.size();
+                              / fitness_avg_next.size();
 
         // Adaptive crossover, mutation, and selection based on fitness and convergence.
+
         double rounded_this_fitness = std::round(this_fitness * 10000.0) / 10000.0;
         double rounded_fittest = std::round(fittest * 10000.0) / 10000.0;
 
-        if (this_fitness < fittest && distance_next < 0.2)
-        {
-            std::cout << "Adjusting..." << std::endl;
-            crossover_rate = 0.9;
-            mutation_rate = 0.005;
-            random_index = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
-            random_index = {0};
-            elitism_size = std::round(individuals / 10);
-            tournament_size = individuals / 20.0;
-        } else
-        {
-            fittest = this_fitness;
-            crossover_rate = 0.7;
-            mutation_rate = 0.001;
-            random_index = {0};
-            elitism_size = individuals / 3;
-            tournament_size = individuals / 10.0;
-        }
+        //if (this_fitness < fittest && distance_next < 0.2)
+        //{
+        //    std::cout << "Adjusting..." << std::endl;
+        //    crossover_rate = 0.9;
+        //    mutation_rate = 0.01;
+        //    random_index = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
+        //    elitism_size = std::round(individuals / 20.0);
+        //} else
+        //{
+        //    fittest = this_fitness;
+        //    crossover_rate = 0.6;
+        //    mutation_rate = 0.005;
+        //    random_index = {0};
+        //    elitism_size = individuals / 5;
+        // }
 
         // Select fittest individuals.
-        std::vector<int> fit_vector_next = genetic_algorithm.get_fittest(velocity_fitness_next);
-
-        selected_params_next = genetic_algorithm.tournament_select(gen_params_next, velocity_fitness_next, tournament_size, elitism_size);
+        for (int i = 0; i < individuals / 2; i++)
+        {
+            json parent;
+            // Elitism based on proximity.
+            if (i < elitism_size)
+            {
+                std::vector<int> fit_next = genetic_algorithm.get_fittest(chemosensation_fitness_next);
+                std::cout << "Elitism " << i << "..." << std::endl;
+                parent = genetic_algorithm.elitism_select(gen_params, chemosensation_fitness_next, i);
+            } else
+            {
+                std::cout << "Fitness proportional selection " << i << "..." << std::endl;
+                parent = genetic_algorithm.fitness_proportional_select(gen_params,
+                                                                       fitness_avg_next);
+            }
+            selected_params_next[i] = parent;
+        }
 
         // Crossover.
+        std::cout << "Crossover..." << std::endl;
         for (int i = 0; i < individuals; i++)
         {
             std::random_device rd;
-            std::mt19937 gen_rand_next(rd());
+            std::mt19937 gen(rd());
             std::uniform_int_distribution<int> distrib(0, (individuals/2)-1);
-            std::uniform_real_distribution<double> real_dist(0.0, 1.0);
-            std::uniform_int_distribution<int> cp_dist(0, param_names.size() - 1);
 
-            int rand_1 = distrib(gen_rand_next);
-            int rand_2 = distrib(gen_rand_next);
+            int rand_1 = distrib(gen);
+            int rand_2 = distrib(gen);
 
-            const std::map<std::string, double>& params_1 = selected_params_next[rand_1];
-            const std::map<std::string, double>& params_2 = selected_params_next[rand_2];
-
-        crossed[i] = genetic_algorithm.crossover(params_1,
-                                                 params_2,
-                                                 param_names,
-                                                 crossover_rate);
+            json params_1 = selected_params_next[rand_1];
+            json params_2 = selected_params_next[rand_2];
+            crossed[i] = genetic_algorithm.crossover(params_1,
+                                                     params_2,
+                                                     crossover_rate);
         }
 
         // Mutation.
-        std::array<std::map<std::string, double>, individuals> mutated;
+        std::cout << "Mutation..." << std::endl;
         for (int i = 0; i < individuals; i++)
         {
             mutated[i] = genetic_algorithm.mutate(crossed[i],
                                                   mutation_rate,
-                                                  0.01,
-                                                  param_names,
-                                                  change_params,
-                                                  output_file_next);
+                                                  0.01);
         }
 
-        output_next << "\nHamming distance: " << std::fixed << std::setprecision(10) << distance_next << std::endl;
+        output << "\nHamming distance: " << std::fixed << std::setprecision(10) << distance_next << std::endl;
 
         std::vector<double> fitness_to_print_next;
         double fitness_print_next = 0.0;
@@ -450,92 +398,87 @@ int main()
         {
             fitness_print_next += fitness_to_print_next[i];
         }
-        fitness_print_next /= (individuals/2.0);
+        fitness_print_next /= (individuals/2);
 
-        std::cout << "Fitness: " << fitness_print_next << std::endl;
-        output_next << "\nFitness: " << fitness_print_next << std::endl;
+        std::cout << "Generation " << gen << " Fitness: " << fitness_print_next << std::endl;
+        output << "\nFitness: " << fitness_print_next << std::endl;
+        fit_f << fitness_print_next << std::endl;
 
-        output_next << "\n=======================" << std::endl;
-        output_next << "--generation parameters" << std::endl;
-        output_next << "=======================\n" << std::endl;
+        output << "\n=======================" << std::endl;
+        output << "--generation parameters" << std::endl;
+        output << "=======================\n" << std::endl;
 
         for (int i = 0; i < individuals; i++)
         {
-            for (const pair<const std::string, double>& value : gen_params_next[i])
+            for (const auto& item : gen_params[i].items())
             {
-                output_next << std::fixed << std::setprecision(10) << value.first << ": " << value.second << std::endl;
+                output << std::fixed << std::setprecision(10) << item.key() << ": " << item.value() << std::endl;
             }
         }
 
-        output_next << "\n==================" << std::endl;
-        output_next << "--sorted fitnesses" << std::endl;
-        output_next << "==================\n" << std::endl;
+        output << "\n==================" << std::endl;
+        output << "--sorted fitnesses" << std::endl;
+        output << "==================\n" << std::endl;
 
         for (int value: genetic_algorithm.get_fittest(fitness_avg_next))
         {
-            output_next << std::fixed << std::setprecision(10) << fitness_avg_next[value] << std::endl;
+            output << std::fixed << std::setprecision(10) << fitness_avg_next[value] << std::endl;
         }
 
-        output_next << "\n=====================" << std::endl;
-        output_next << "--selected parameters" << std::endl;
-        output_next << "=====================\n" << std::endl;
+        output << "\n=====================" << std::endl;
+        output << "--selected parameters" << std::endl;
+        output << "=====================\n" << std::endl;
 
         for (int i = 0; i < individuals/2; i++)
         {
-            for (const auto& pair : selected_params_next[i])
+            for (const auto& item : selected_params_next[i].items())
             {
-                output_next << std::fixed << std::setprecision(10) << pair.first << " " << pair.second << std::endl;
+                output << std::fixed << std::setprecision(10) << item.key() << " " << item.value() << std::endl;
             }
         }
 
-        output_next << "\n====================" << std::endl;
-        output_next << "--crossed parameters" << std::endl;
-        output_next << "====================\n" << std::endl;
+        output << "\n====================" << std::endl;
+        output << "--crossed parameters" << std::endl;
+        output << "====================\n" << std::endl;
 
         for (int i = 0; i < individuals; i++)
         {
-            for (const auto& pair : crossed[i])
+            for (const auto& item : crossed[i].items())
             {
-               output_next << std::fixed << std::setprecision(10) << pair.first << " " << pair.second << std::endl;
+                output << std::fixed << std::setprecision(10) << item.key() << " " << item.value() << std::endl;
             }
         }
 
-        output_next << "\n=====================" << std::endl;
-        output_next << "--mutated parameters" << std::endl;
-        output_next << "====================\n" << std::endl;
+        output << "\n=====================" << std::endl;
+        output << "--mutated parameters" << std::endl;
+        output << "====================\n" << std::endl;
 
         for (int i = 0; i < individuals; i++)
         {
-            for (const auto& pair : mutated[i])
+            for (const auto& item : mutated[i].items())
             {
-                output_next << std::fixed << std::setprecision(10) << pair.first << " " << pair.second << std::endl;
+                output << std::fixed << std::setprecision(10) << item.key() << " " << item.value() << std::endl;
             }
         }
 
         final_params = selected_params_next;
 
-        int chemosensation_fittest = 0;
-        for (int i = 0; i < individuals; i++) {
-            if (chemosensation_fitness_next[i] >= chemosensation_fitness_next[chemosensation_fittest])
-            {
-                chemosensation_fittest = i;
-            }
-        }
-
-        std::string fittest_params = "log/params_" + std::to_string(generation) + ".json";
-        write_params(selected_params_next[0], fittest_params);
+        std::string fittest_params = "log/params_" + std::to_string(gen) + ".json";
+        std::ofstream fittest_output(fittest_params);
+        fittest_output << selected_params_next[0].dump(4);
     }
 
     // Save parameters from final generation.
-    for (int i = 0; i < individuals/2; i++)
+    for (int i = 0; i < individuals / 2; i++)
     {
-            std::cout << "Final Params " << i << ":\n";
-            for (const auto& pair : final_params[i]) {
-                std::cout << pair.first << ": " << pair.second << "\n";
-            }
+        //std::cout << "Final Params " << i << ":\n";
+        //for (const auto& item : final_params[i].items()) {
+        //    std::cout << item.key() << ": " << item.value() << "\n";
+        //}
         std::string final_params_file = "log/final_params_" + std::to_string(i) + ".json";
-        write_params(final_params[i],
-                     final_params_file);
+        std::ofstream final_output(final_params_file);
+        final_output << final_params[i].dump(4);
+
     }
 
     return 0;
